@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sunset Predictor</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .weather-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            transition: all 0.5s ease;
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        body {
+            min-height: 100vh;
+            overflow-y: auto;
+        }
+        
+        .content-wrapper {
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+            padding-bottom: 2rem;
+        }
+        
+        .weather-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, #1a1a2e, #16213e, #1a1a2e);
+            z-index: 1000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.5s ease;
+            backdrop-filter: blur(8px);
+        }
+        
+        .quality-score-area {
+            position: relative;
+        }
+        
+        .weather-preview {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+        }
+        
+        .sunset-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .quality-circle {
+            width: 64px;
+            height: 64px;
+        }
+        
+        .quality-circle path {
+            stroke-dasharray: 100;
+            stroke-dashoffset: 100;
+        }
+        
+        .sun-animation {
+            width: 120px;
+            height: 120px;
+            background: #ffd700;
+            border-radius: 50%;
+            box-shadow: 0 0 50px #ff6b6b, 0 0 100px #ff8e8e, 0 0 150px #ffb88c;
+            animation: sunPulse 2s infinite ease-in-out, sunRise 3s ease-in-out;
+            position: relative;
+        }
+
+        @keyframes sunPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes sunRise {
+            0% { transform: translateY(100vh); }
+            100% { transform: translateY(0); }
+        }
+
+        .sun-rays {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 160px;
+            height: 160px;
+            transform-origin: center;
+            animation: rayRotate 20s linear infinite;
+        }
+
+        .sun-ray {
+            position: absolute;
+            width: 4px;
+            height: 80px;
+            background: linear-gradient(to top, rgba(255, 215, 0, 0), rgba(255, 215, 0, 0.8));
+            transform-origin: bottom center;
+        }
+
+        @keyframes rayRotate {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            .glass-card {
+                padding: 1rem;
+                margin: 0.5rem;
+            }
+            
+            input[type="text"] {
+                font-size: 16px; /* Prevents iOS zoom on focus */
+                height: 50px; /* Larger touch target */
+                padding: 0.75rem;
+            }
+            
+            .sun-animation {
+                width: 100px;
+                height: 100px;
+            }
+            
+            .sun-rays {
+                width: 140px;
+                height: 140px;
+            }
+            
+            .sunset-stat {
+                padding: 0.75rem;
+            }
+            
+            .quality-circle {
+                width: 56px;
+                height: 56px;
+            }
+            
+            /* Improve spacing on mobile */
+            .mb-8 {
+                margin-bottom: 1.5rem;
+            }
+            
+            .gap-6 {
+                gap: 1rem;
+            }
+            
+            /* Better touch targets */
+            button {
+                min-height: 44px;
+                padding: 0.75rem 1.5rem;
+            }
+        }
+        
+        /* Smooth transitions */
+        .glass-card, button, input {
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-4 md:p-8">
+    <!-- Search Section -->
+    <div class="max-w-4xl mx-auto mb-8">
+        <div class="glass-card p-4 md:p-6">
+            <h1 class="text-2xl md:text-3xl font-bold text-white text-center mb-6">Sunset Predictor</h1>
+            <div class="flex flex-col gap-4">
+                <div class="w-full">
+                    <input type="text" 
+                           id="locationInput" 
+                           placeholder="Enter city, state (e.g. Boston, MA)" 
+                           class="w-full px-4 py-3 rounded-lg bg-white bg-opacity-20 text-white placeholder-gray-300 border border-white border-opacity-20 focus:outline-none focus:border-opacity-50 transition-all text-lg"
+                           autocomplete="off"
+                           autocorrect="off"
+                           autocapitalize="off">
+                    <div class="text-xs text-gray-300 mt-1 px-1">For best results, enter both city and state (e.g. "San Francisco, CA")</div>
+                </div>
+                <div class="flex justify-center space-x-4 mb-4">
+                    <button id="todayBtn" 
+                            class="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 active transform active:scale-95 transition-all">
+                        Get Today's Sunset
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay">
+        <div class="relative">
+            <div class="sun-animation">
+                <div class="sun-rays">
+                    <!-- 12 rays -->
+                    <div class="sun-ray" style="transform: rotate(0deg)"></div>
+                    <div class="sun-ray" style="transform: rotate(30deg)"></div>
+                    <div class="sun-ray" style="transform: rotate(60deg)"></div>
+                    <div class="sun-ray" style="transform: rotate(90deg)"></div>
+                    <div class="sun-ray" style="transform: rotate(120deg)"></div>
+                    <div class="sun-ray" style="transform: rotate(150deg)"></div>
+                    <div class="sun-ray" style="transform: rotate(180deg)"></div>
+                    <div class="sun-ray" style="transform: rotate(210deg)"></div>
+                    <div class="sun-ray" style="transform: rotate(240deg)"></div>
+                    <div class="sun-ray" style="transform: rotate(270deg)"></div>
+                    <div class="sun-ray" style="transform: rotate(300deg)"></div>
+                    <div class="sun-ray" style="transform: rotate(330deg)"></div>
+                </div>
+            </div>
+            <p class="text-white text-xl mt-8 text-center">Predicting sunset quality...</p>
+        </div>
+    </div>
+
+    <!-- Sunset Prediction -->
+    <div id="sunsetPrediction" class="hidden">
+        <!-- Single Day View -->
+        <div id="singleDayView" class="glass-card max-w-4xl mx-auto p-6 mb-6">
+            <div class="text-center mb-6">
+                <h3 class="text-2xl font-bold text-white mb-4">Today's Sunset</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <div class="sunset-stat">
+                        <i class="fas fa-sun text-4xl text-yellow-400 mb-2"></i>
+                        <p class="text-sm opacity-75">Sunset Time</p>
+                        <p id="sunsetTime" class="text-xl font-bold"></p>
+                    </div>
+                    <div class="sunset-stat quality-score-area">
+                        <div class="relative">
+                            <svg class="quality-circle" viewBox="0 0 36 36">
+                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(255, 255, 255, 0.2)" stroke-width="2"/>
+                                <path id="qualityPath" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#fbbf24" stroke-width="2"/>
+                            </svg>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                <p class="text-sm opacity-75">Quality</p>
+                                <p id="qualityScore" class="text-xl font-bold"></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="sunset-stat">
+                        <i class="fas fa-cloud text-4xl text-blue-400 mb-2"></i>
+                        <p class="text-sm opacity-75">Cloud Cover</p>
+                        <p id="cloudCover" class="text-xl font-bold"></p>
+                    </div>
+                    <div class="sunset-stat">
+                        <i class="fas fa-wind text-4xl text-gray-400 mb-2"></i>
+                        <p class="text-sm opacity-75">Wind</p>
+                        <p id="windSpeed" class="text-xl font-bold"></p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Photography Tips -->
+            <div id="sunsetTips" class="bg-white bg-opacity-10 rounded-lg p-4">
+                <div class="flex items-center gap-2 mb-2">
+                    <i class="fas fa-camera text-2xl text-yellow-400"></i>
+                    <h4 class="text-xl font-bold text-white">Photography Tips</h4>
+                </div>
+                <p id="weatherTip" class="text-lg mb-2"></p>
+                <p id="timingTip" class="text-sm opacity-75"></p>
+            </div>
+        </div>
+
+        <!-- Multi Day View -->
+        <div id="multiDayView" class="hidden">
+            <div class="max-w-4xl mx-auto space-y-6">
+                <!-- Combined Best Day and Chart Card -->
+                <div class="glass-card p-6">
+                    <div class="grid md:grid-cols-2 gap-6 mb-6">
+                        <!-- Best Day Section -->
+                        <div>
+                            <div class="flex items-center gap-4 mb-4">
+                                <i class="fas fa-crown text-3xl text-yellow-400"></i>
+                                <h3 class="text-2xl font-bold text-white">Best Sunset</h3>
+                            </div>
+                            <div id="bestDayContent">
+                                <!-- Best day content will be inserted here -->
+                            </div>
+                        </div>
+                        
+                        <!-- Chart Section -->
+                        <div>
+                            <h3 class="text-xl font-bold text-white mb-4">Quality Forecast</h3>
+                            <div class="h-48">
+                                <canvas id="forecastChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daily Cards -->
+                <div id="forecastGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Forecast cards will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
